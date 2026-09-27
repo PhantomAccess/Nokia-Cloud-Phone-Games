@@ -1,0 +1,1656 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0,
+maximum-scale=1.0, user-scalable=no">
+
+<title>Nokia RPG</title>
+
+<style>
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #111;
+    color: #fff;
+    font-family: monospace;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    height: 100vh;
+    overflow: hidden;
+}
+
+canvas {
+    background: #9bbc0f;
+    border: 5px solid #333;
+
+    image-rendering: pixelated;
+
+    width: 240px;
+    height: 320px;
+}
+
+</style>
+</head>
+
+<body>
+
+<canvas id="gameCanvas"
+width="240"
+height="320">
+</canvas>
+
+<script>
+
+// =====================================================
+// CANVAS
+// =====================================================
+
+const canvas =
+document.getElementById("gameCanvas");
+
+const ctx =
+canvas.getContext("2d");
+
+
+// =====================================================
+// AUDIO SYSTEM
+// =====================================================
+
+let audioContext = null;
+
+
+// Start audio after first key press
+function startAudio() {
+
+    if (!audioContext) {
+
+        audioContext =
+        new (window.AudioContext ||
+        window.webkitAudioContext)();
+
+    }
+
+    if (audioContext.state === "suspended") {
+
+        audioContext.resume();
+
+    }
+
+}
+
+
+// Play a simple retro beep
+function beep(
+    frequency,
+    duration,
+    type = "square",
+    volume = 0.05
+) {
+
+    if (!audioContext) return;
+
+    const oscillator =
+    audioContext.createOscillator();
+
+    const gain =
+    audioContext.createGain();
+
+    oscillator.type = type;
+
+    oscillator.frequency.value =
+    frequency;
+
+    gain.gain.value = volume;
+
+    oscillator.connect(gain);
+
+    gain.connect(
+        audioContext.destination
+    );
+
+    oscillator.start();
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        audioContext.currentTime + duration
+    );
+
+    oscillator.stop(
+        audioContext.currentTime + duration
+    );
+}
+
+
+// =====================================================
+// SOUND EFFECTS
+// =====================================================
+
+function soundMove() {
+
+    beep(440, 0.05);
+
+}
+
+
+function soundAction() {
+
+    beep(660, 0.08);
+
+    setTimeout(() => {
+        beep(880, 0.08);
+    }, 80);
+
+}
+
+
+function soundAttack() {
+
+    beep(180, 0.08);
+
+    setTimeout(() => {
+        beep(120, 0.10);
+    }, 80);
+
+}
+
+
+function soundHit() {
+
+    beep(100, 0.12);
+
+    setTimeout(() => {
+        beep(70, 0.15);
+    }, 100);
+
+}
+
+
+function soundLevelUp() {
+
+    beep(523, 0.12);
+
+    setTimeout(() => {
+        beep(659, 0.12);
+    }, 120);
+
+    setTimeout(() => {
+        beep(784, 0.18);
+    }, 240);
+
+}
+
+
+function soundGameOver() {
+
+    beep(392, 0.15);
+
+    setTimeout(() => {
+        beep(330, 0.15);
+    }, 160);
+
+    setTimeout(() => {
+        beep(262, 0.30);
+    }, 320);
+
+}
+
+
+function soundStart() {
+
+    beep(523, 0.10);
+
+    setTimeout(() => {
+        beep(659, 0.10);
+    }, 120);
+
+    setTimeout(() => {
+        beep(784, 0.15);
+    }, 240);
+
+}
+
+
+// =====================================================
+// GAME SETTINGS
+// =====================================================
+
+const TILE = 24;
+
+const MAP_WIDTH = 10;
+
+const MAP_HEIGHT = 8;
+
+
+// =====================================================
+// MAP
+// =====================================================
+
+const map = [
+
+    "##########",
+    "#........#",
+    "#..TT....#",
+    "#........#",
+    "#....H...#",
+    "#........#",
+    "#S.......#",
+    "##########"
+
+];
+
+
+// =====================================================
+// PLAYER
+// =====================================================
+
+let player = {
+
+    x: 1,
+    y: 6,
+
+    hp: 30,
+    maxHp: 30,
+
+    level: 1,
+
+    xp: 0,
+
+    attack: 6,
+
+    gold: 10
+
+};
+
+
+// =====================================================
+// ENEMIES
+// =====================================================
+
+let enemies = [
+
+    {
+        x: 6,
+        y: 2,
+
+        name: "Slime",
+
+        hp: 12,
+        maxHp: 12,
+
+        attack: 3,
+
+        xp: 5
+    },
+
+    {
+        x: 7,
+        y: 5,
+
+        name: "Goblin",
+
+        hp: 18,
+        maxHp: 18,
+
+        attack: 5,
+
+        xp: 10
+    }
+
+];
+
+
+// =====================================================
+// GAME STATE
+// =====================================================
+
+let gameState = "START";
+
+let message = "";
+
+
+// =====================================================
+// KEYBOARD
+// =====================================================
+
+document.addEventListener(
+"keydown",
+function(e) {
+
+    e.preventDefault();
+
+    startAudio();
+
+    const key = e.key;
+
+
+    // START SCREEN
+
+    if (gameState === "START") {
+
+        if (
+            key === "5" ||
+            key === "Enter" ||
+            key === " "
+        ) {
+
+            soundStart();
+
+            gameState =
+            "PLAYING";
+
+        }
+
+        return;
+
+    }
+
+
+    // GAME OVER
+
+    if (gameState === "GAMEOVER") {
+
+        if (
+            key === "5" ||
+            key === "Enter"
+        ) {
+
+            soundAction();
+
+            restartGame();
+
+        }
+
+        return;
+
+    }
+
+
+    // BATTLE
+
+    if (gameState === "BATTLE") {
+
+        battleInput(key);
+
+        return;
+
+    }
+
+
+    // MENU
+
+    if (gameState === "MENU") {
+
+        menuInput(key);
+
+        return;
+
+    }
+
+
+    // NORMAL GAME
+
+    if (gameState === "PLAYING") {
+
+        movementInput(key);
+
+    }
+
+});
+
+
+// =====================================================
+// MOVEMENT INPUT
+// =====================================================
+
+function movementInput(key) {
+
+    let dx = 0;
+
+    let dy = 0;
+
+
+    if (
+        key === "2" ||
+        key === "ArrowUp"
+    ) {
+
+        dy = -1;
+
+    }
+
+
+    if (
+        key === "8" ||
+        key === "ArrowDown"
+    ) {
+
+        dy = 1;
+
+    }
+
+
+    if (
+        key === "4" ||
+        key === "ArrowLeft"
+    ) {
+
+        dx = -1;
+
+    }
+
+
+    if (
+        key === "6" ||
+        key === "ArrowRight"
+    ) {
+
+        dx = 1;
+
+    }
+
+
+    // MENU
+
+    if (key === "0") {
+
+        soundAction();
+
+        gameState = "MENU";
+
+        return;
+
+    }
+
+
+    // ACTION
+
+    if (
+        key === "5" ||
+        key === "Enter"
+    ) {
+
+        interact();
+
+        return;
+
+    }
+
+
+    if (
+        dx === 0 &&
+        dy === 0
+    ) {
+
+        return;
+
+    }
+
+
+    movePlayer(dx, dy);
+
+}
+
+
+// =====================================================
+// MOVE PLAYER
+// =====================================================
+
+function movePlayer(dx, dy) {
+
+    const newX =
+    player.x + dx;
+
+    const newY =
+    player.y + dy;
+
+
+    if (
+        newX < 0 ||
+        newX >= MAP_WIDTH ||
+        newY < 0 ||
+        newY >= MAP_HEIGHT
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        map[newY][newX] === "#"
+    ) {
+
+        message =
+        "Blocked!";
+
+        beep(120, 0.05);
+
+        return;
+
+    }
+
+
+    if (
+        map[newY][newX] === "T"
+    ) {
+
+        message =
+        "A tree blocks the way.";
+
+        beep(120, 0.05);
+
+        return;
+
+    }
+
+
+    const enemy =
+    getEnemyAt(newX, newY);
+
+
+    if (enemy) {
+
+        soundAction();
+
+        gameState =
+        "BATTLE";
+
+        message =
+        "A " +
+        enemy.name +
+        " attacks!";
+
+        return;
+
+    }
+
+
+    player.x = newX;
+
+    player.y = newY;
+
+    soundMove();
+
+}
+
+
+// =====================================================
+// INTERACT
+// =====================================================
+
+function interact() {
+
+    const nearbyEnemy =
+    findNearbyEnemy();
+
+
+    if (nearbyEnemy) {
+
+        soundAction();
+
+        gameState =
+        "BATTLE";
+
+        message =
+        "Battle!";
+
+        return;
+
+    }
+
+
+    if (
+        map[player.y][player.x] === "H"
+    ) {
+
+        soundAction();
+
+        message =
+        "You found a house.";
+
+        return;
+
+    }
+
+
+    soundAction();
+
+    message =
+    "Nothing here.";
+
+}
+
+
+// =====================================================
+// FIND ENEMY
+// =====================================================
+
+function getEnemyAt(x, y) {
+
+    for (
+        let enemy of enemies
+    ) {
+
+        if (
+            enemy.x === x &&
+            enemy.y === y &&
+            enemy.hp > 0
+        ) {
+
+            return enemy;
+
+        }
+
+    }
+
+    return null;
+
+}
+
+
+function findNearbyEnemy() {
+
+    for (
+        let enemy of enemies
+    ) {
+
+        if (
+            enemy.hp <= 0
+        ) {
+
+            continue;
+
+        }
+
+
+        const distance =
+        Math.abs(
+            enemy.x - player.x
+        ) +
+        Math.abs(
+            enemy.y - player.y
+        );
+
+
+        if (distance === 1) {
+
+            return enemy;
+
+        }
+
+    }
+
+    return null;
+
+}
+
+
+// =====================================================
+// BATTLE INPUT
+// =====================================================
+
+function battleInput(key) {
+
+    const enemy =
+    findNearbyEnemy();
+
+
+    if (!enemy) {
+
+        gameState =
+        "PLAYING";
+
+        return;
+
+    }
+
+
+    if (
+        key === "5" ||
+        key === "Enter"
+    ) {
+
+        playerAttack(enemy);
+
+    }
+
+}
+
+
+// =====================================================
+// PLAYER ATTACK
+// =====================================================
+
+function playerAttack(enemy) {
+
+    soundAttack();
+
+
+    enemy.hp -=
+    player.attack;
+
+
+    message =
+    "You hit " +
+    enemy.name +
+    "!";
+
+
+    if (
+        enemy.hp <= 0
+    ) {
+
+        message =
+        enemy.name +
+        " defeated!";
+
+
+        soundLevelUp();
+
+
+        gainXP(
+            enemy.xp
+        );
+
+
+        player.gold += 3;
+
+
+        gameState =
+        "PLAYING";
+
+
+        return;
+
+    }
+
+
+    // Enemy attacks
+
+    setTimeout(
+    function() {
+
+        if (
+            gameState !==
+            "BATTLE"
+        ) {
+
+            return;
+
+        }
+
+
+        player.hp -=
+        enemy.attack;
+
+
+        soundHit();
+
+
+        message =
+        enemy.name +
+        " hits you!";
+
+
+        if (
+            player.hp <= 0
+        ) {
+
+            player.hp = 0;
+
+            gameState =
+            "GAMEOVER";
+
+            soundGameOver();
+
+        }
+
+    },
+    300);
+
+}
+
+
+// =====================================================
+// XP
+// =====================================================
+
+function gainXP(amount) {
+
+    player.xp += amount;
+
+
+    const neededXP =
+    player.level * 10;
+
+
+    if (
+        player.xp >= neededXP
+    ) {
+
+        player.xp -=
+        neededXP;
+
+
+        player.level++;
+
+
+        player.maxHp += 5;
+
+
+        player.hp =
+        player.maxHp;
+
+
+        player.attack += 2;
+
+
+        message =
+        "LEVEL UP!";
+
+
+        soundLevelUp();
+
+    }
+
+}
+
+
+// =====================================================
+// MENU
+// =====================================================
+
+function menuInput(key) {
+
+    if (
+        key === "0" ||
+        key === "5" ||
+        key === "Enter"
+    ) {
+
+        soundAction();
+
+        gameState =
+        "PLAYING";
+
+    }
+
+}
+
+
+// =====================================================
+// RESTART
+// =====================================================
+
+function restartGame() {
+
+    player.x = 1;
+
+    player.y = 6;
+
+
+    player.hp = 30;
+
+    player.maxHp = 30;
+
+
+    player.level = 1;
+
+    player.xp = 0;
+
+
+    player.attack = 6;
+
+
+    player.gold = 10;
+
+
+    for (
+        let enemy of enemies
+    ) {
+
+        enemy.hp =
+        enemy.maxHp;
+
+    }
+
+
+    message = "";
+
+    gameState =
+    "PLAYING";
+
+}
+
+
+// =====================================================
+// DRAW MAP
+// =====================================================
+
+function drawMap() {
+
+    for (
+        let y = 0;
+        y < MAP_HEIGHT;
+        y++
+    ) {
+
+        for (
+            let x = 0;
+            x < MAP_WIDTH;
+            x++
+        ) {
+
+            const tile =
+            map[y][x];
+
+
+            const px =
+            x * TILE;
+
+            const py =
+            y * TILE;
+
+
+            // Ground
+
+            ctx.fillStyle =
+            "#9bbc0f";
+
+            ctx.fillRect(
+                px,
+                py,
+                TILE,
+                TILE
+            );
+
+
+            // Wall
+
+            if (
+                tile === "#"
+            ) {
+
+                ctx.fillStyle =
+                "#306230";
+
+                ctx.fillRect(
+                    px,
+                    py,
+                    TILE,
+                    TILE
+                );
+
+            }
+
+
+            // Tree
+
+            if (
+                tile === "T"
+            ) {
+
+                ctx.fillStyle =
+                "#0f380f";
+
+
+                ctx.fillRect(
+                    px + 5,
+                    py + 4,
+                    14,
+                    15
+                );
+
+
+                ctx.fillRect(
+                    px + 9,
+                    py + 16,
+                    6,
+                    7
+                );
+
+            }
+
+
+            // House
+
+            if (
+                tile === "H"
+            ) {
+
+                ctx.fillStyle =
+                "#306230";
+
+
+                ctx.fillRect(
+                    px + 3,
+                    py + 8,
+                    18,
+                    14
+                );
+
+
+                ctx.fillStyle =
+                "#0f380f";
+
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    px + 2,
+                    py + 8
+                );
+
+                ctx.lineTo(
+                    px + 12,
+                    py + 1
+                );
+
+                ctx.lineTo(
+                    px + 22,
+                    py + 8
+                );
+
+                ctx.fill();
+
+            }
+
+        }
+
+    }
+
+}
+
+
+// =====================================================
+// DRAW ENEMIES
+// =====================================================
+
+function drawEnemies() {
+
+    for (
+        let enemy of enemies
+    ) {
+
+        if (
+            enemy.hp <= 0
+        ) {
+
+            continue;
+
+        }
+
+
+        const px =
+        enemy.x * TILE;
+
+        const py =
+        enemy.y * TILE;
+
+
+        ctx.fillStyle =
+        "#0f380f";
+
+
+        ctx.fillRect(
+            px + 5,
+            py + 7,
+            14,
+            13
+        );
+
+
+        ctx.fillStyle =
+        "#9bbc0f";
+
+
+        ctx.fillRect(
+            px + 8,
+            py + 10,
+            3,
+            3
+        );
+
+
+        ctx.fillRect(
+            px + 14,
+            py + 10,
+            3,
+            3
+        );
+
+    }
+
+}
+
+
+// =====================================================
+// DRAW PLAYER
+// =====================================================
+
+function drawPlayer() {
+
+    const px =
+    player.x * TILE;
+
+    const py =
+    player.y * TILE;
+
+
+    ctx.fillStyle =
+    "#fff";
+
+
+    // Head
+
+    ctx.fillRect(
+        px + 7,
+        py + 3,
+        10,
+        8
+    );
+
+
+    // Body
+
+    ctx.fillRect(
+        px + 5,
+        py + 11,
+        14,
+        10
+    );
+
+}
+
+
+// =====================================================
+// TEXT
+// =====================================================
+
+function text(
+    txt,
+    x,
+    y,
+    size = 12
+) {
+
+    ctx.fillStyle =
+    "#0f380f";
+
+
+    ctx.font =
+    size + "px monospace";
+
+
+    ctx.textAlign =
+    "center";
+
+
+    ctx.fillText(
+        txt,
+        x,
+        y
+    );
+
+}
+
+
+// =====================================================
+// START SCREEN
+// =====================================================
+
+function drawStart() {
+
+    ctx.fillStyle =
+    "#9bbc0f";
+
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    text(
+        "NOKIA RPG",
+        120,
+        70,
+        24
+    );
+
+
+    text(
+        "THE LOST KINGDOM",
+        120,
+        100,
+        11
+    );
+
+
+    text(
+        "2 8 4 6 = MOVE",
+        120,
+        150,
+        11
+    );
+
+
+    text(
+        "5 = ACTION",
+        120,
+        170,
+        11
+    );
+
+
+    text(
+        "0 = MENU",
+        120,
+        190,
+        11
+    );
+
+
+    text(
+        "PRESS 5 TO START",
+        120,
+        245,
+        12
+    );
+
+}
+
+
+// =====================================================
+// HUD
+// =====================================================
+
+function drawHUD() {
+
+    ctx.fillStyle =
+    "#9bbc0f";
+
+
+    ctx.fillRect(
+        0,
+        192,
+        240,
+        128
+    );
+
+
+    ctx.textAlign =
+    "left";
+
+
+    ctx.fillStyle =
+    "#0f380f";
+
+
+    ctx.font =
+    "11px monospace";
+
+
+    ctx.fillText(
+        "HP " +
+        player.hp +
+        "/" +
+        player.maxHp,
+        8,
+        208
+    );
+
+
+    ctx.fillText(
+        "LV " +
+        player.level,
+        8,
+        224
+    );
+
+
+    ctx.fillText(
+        "XP " +
+        player.xp +
+        "/" +
+        (player.level * 10),
+        8,
+        240
+    );
+
+
+    ctx.fillText(
+        "GOLD " +
+        player.gold,
+        8,
+        256
+    );
+
+
+    ctx.fillText(
+        message,
+        8,
+        280
+    );
+
+}
+
+
+// =====================================================
+// BATTLE SCREEN
+// =====================================================
+
+function drawBattle() {
+
+    ctx.fillStyle =
+    "#9bbc0f";
+
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    const enemy =
+    findNearbyEnemy();
+
+
+    if (!enemy) {
+
+        gameState =
+        "PLAYING";
+
+        return;
+
+    }
+
+
+    text(
+        "BATTLE!",
+        120,
+        40,
+        20
+    );
+
+
+    text(
+        enemy.name,
+        120,
+        80,
+        16
+    );
+
+
+    // Enemy
+
+    ctx.fillStyle =
+    "#0f380f";
+
+
+    ctx.fillRect(
+        95,
+        100,
+        50,
+        40
+    );
+
+
+    text(
+        "HP " +
+        enemy.hp +
+        "/" +
+        enemy.maxHp,
+        120,
+        165,
+        11
+    );
+
+
+    text(
+        "5 = ATTACK",
+        120,
+        220,
+        13
+    );
+
+
+    text(
+        "HP " +
+        player.hp +
+        "/" +
+        player.maxHp,
+        120,
+        250,
+        11
+    );
+
+}
+
+
+// =====================================================
+// MENU SCREEN
+// =====================================================
+
+function drawMenu() {
+
+    ctx.fillStyle =
+    "#9bbc0f";
+
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    text(
+        "MENU",
+        120,
+        50,
+        20
+    );
+
+
+    text(
+        "LEVEL " +
+        player.level,
+        120,
+        90,
+        13
+    );
+
+
+    text(
+        "HP " +
+        player.hp +
+        "/" +
+        player.maxHp,
+        120,
+        115,
+        13
+    );
+
+
+    text(
+        "ATTACK " +
+        player.attack,
+        120,
+        140,
+        13
+    );
+
+
+    text(
+        "GOLD " +
+        player.gold,
+        120,
+        165,
+        13
+    );
+
+
+    text(
+        "0 / 5 = BACK",
+        120,
+        230,
+        12
+    );
+
+}
+
+
+// =====================================================
+// GAME OVER
+// =====================================================
+
+function drawGameOver() {
+
+    ctx.fillStyle =
+    "#9bbc0f";
+
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    text(
+        "YOU DIED",
+        120,
+        100,
+        22
+    );
+
+
+    text(
+        "LEVEL " +
+        player.level,
+        120,
+        140,
+        12
+    );
+
+
+    text(
+        "PRESS 5",
+        120,
+        200,
+        13
+    );
+
+
+    text(
+        "TO RESTART",
+        120,
+        220,
+        13
+    );
+
+}
+
+
+// =====================================================
+// MAIN DRAW
+// =====================================================
+
+function draw() {
+
+    if (
+        gameState === "START"
+    ) {
+
+        drawStart();
+
+        return;
+
+    }
+
+
+    if (
+        gameState === "BATTLE"
+    ) {
+
+        drawBattle();
+
+        return;
+
+    }
+
+
+    if (
+        gameState === "MENU"
+    ) {
+
+        drawMenu();
+
+        return;
+
+    }
+
+
+    if (
+        gameState === "GAMEOVER"
+    ) {
+
+        drawGameOver();
+
+        return;
+
+    }
+
+
+    drawMap();
+
+    drawEnemies();
+
+    drawPlayer();
+
+    drawHUD();
+
+}
+
+
+// =====================================================
+// GAME LOOP
+// =====================================================
+
+function gameLoop() {
+
+    draw();
+
+    requestAnimationFrame(
+        gameLoop
+    );
+
+}
+
+
+gameLoop();
+
+</script>
+
+</body>
+</html>
+```
