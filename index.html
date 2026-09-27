@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Feature Bird</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background-color: #111;
+            color: #fff;
+            font-family: monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #70c5ce;
+            border: 4px solid #333;
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="240" height="320"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// Game Constants / Settings
+const GRAVITY = 0.25;
+const FLAP_STRENGTH = -4.5;
+const PIPE_SPEED = 1.5;
+const PIPE_SPAWN_RATE = 100; // Frames between pipes
+const GAP_SIZE = 95;
+
+// State Variables
+let bird = { x: 40, y: 150, radius: 8, velocity: 0 };
+let pipes = [];
+let frameCounter = 0;
+let score = 0;
+let gameState = "START"; // START, PLAYING, GAMEOVER
+
+// Combined event listener for D-pad (ArrowUp), Enter key, or T9 keypad center key (5)
+document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp" || e.key === "Enter" || e.key === "5" || e.key === " ") {
+        e.preventDefault(); // Stop scrolling layout behavior
+        handleAction();
+    }
+});
+
+function handleAction() {
+    if (gameState === "START") {
+        resetGame();
+        gameState = "PLAYING";
+    } else if (gameState === "PLAYING") {
+        bird.velocity = FLAP_STRENGTH;
+    } else if (gameState === "GAMEOVER") {
+        gameState = "START";
+    }
+}
+
+function resetGame() {
+    bird.y = 150;
+    bird.velocity = 0;
+    pipes = [];
+    score = 0;
+    frameCounter = 0;
+}
+
+function spawnPipe() {
+    let minHeight = 30;
+    let maxHeight = canvas.height - GAP_SIZE - minHeight;
+    let topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+
+    pipes.push({
+        x: canvas.width,
+        topHeight: topHeight,
+        bottomY: topHeight + GAP_SIZE,
+        width: 32,
+        passed: false
+    });
+}
+
+function update() {
+    if (gameState !== "PLAYING") return;
+
+    frameCounter++;
+
+    // Bird physics
+    bird.velocity += GRAVITY;
+    bird.y += bird.velocity;
+
+    // Check ceiling and floor collisions
+    if (bird.y + bird.radius >= canvas.height || bird.y - bird.radius <= 0) {
+        gameState = "GAMEOVER";
+    }
+
+    // Spawn pipes
+    if (frameCounter % PIPE_SPAWN_RATE === 0) {
+        spawnPipe();
+    }
+
+    // Update pipes placement
+    for (let i = pipes.length - 1; i >= 0; i--) {
+        let p = pipes[i];
+        p.x -= PIPE_SPEED;
+
+        // Scoring criteria
+        if (!p.passed && p.x + p.width < bird.x) {
+            score++;
+            p.passed = true;
+        }
+
+        // Hitbox collision verification
+        if (
+            bird.x + bird.radius > p.x &&
+            bird.x - bird.radius < p.x + p.width &&
+            (bird.y - bird.radius < p.topHeight || bird.y + bird.radius > p.bottomY)
+        ) {
+            gameState = "GAMEOVER";
+        }
+
+        // Clean up out of boundary array elements
+        if (p.x + p.width < 0) {
+            pipes.splice(i, 1);
+        }
+    }
+}
+
+function draw() {
+    // Clear display buffer
+    ctx.fillStyle = "#70c5ce";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Ground Line
+    ctx.fillStyle = "#ded895";
+    ctx.fillRect(0, canvas.height - 12, canvas.width, 12);
+
+    // Draw Obstacle Pipes
+    pipes.forEach(p => {
+        ctx.fillStyle = "#73bf2e";
+        // Top structural pipe
+        ctx.fillRect(p.x, 0, p.width, p.topHeight);
+        ctx.strokeStyle = "#538221";
+        ctx.strokeRect(p.x, 0, p.width, p.topHeight);
+
+        // Bottom structural pipe
+        ctx.fillRect(p.x, p.bottomY, p.width, canvas.height - p.bottomY);
+        ctx.strokeRect(p.x, p.bottomY, p.width, canvas.height - p.bottomY);
+    });
+
+    // Draw Player Bird
+    ctx.beginPath();
+    ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#f8e71c";
+    ctx.fill();
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.closePath();
+
+    // Context UI Display
+    ctx.fillStyle = "#fff";
+    ctx.font = "14px monospace";
+    ctx.textAlign = "center";
+
+    if (gameState === "START") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+        ctx.fillRect(10, 110, canvas.width - 20, 80);
+        ctx.fillStyle = "#fff";
+        ctx.fillText("FLAPPY BIRD", canvas.width / 2, 135);
+        ctx.font = "10px monospace";
+        ctx.fillText("Press [UP] or [5] to Flap", canvas.width / 2, 165);
+    } else if (gameState === "PLAYING") {
+        ctx.font = "20px monospace";
+        ctx.fillText(score, canvas.width / 2, 35);
+    } else if (gameState === "GAMEOVER") {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(10, 110, canvas.width - 20, 80);
+        ctx.fillStyle = "#ff3b30";
+        ctx.fillText("GAME OVER", canvas.width / 2, 135);
+        ctx.fillStyle = "#fff";
+        ctx.font = "11px monospace";
+        ctx.fillText(`Score: ${score} - Press Any Key`, canvas.width / 2, 165);
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// Fire up engine instance
+gameLoop();
+</script>
+</body>
+</html>
